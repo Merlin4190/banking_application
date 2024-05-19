@@ -1,7 +1,6 @@
 package test
 
 import (
-	"banking_application/api/database"
 	"banking_application/api/domain/dtos"
 	"banking_application/api/services"
 	"database/sql"
@@ -9,67 +8,70 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 	"testing"
 )
 
-type MockRow struct {
-	mock.Mock
-	err error
+type TransactionServiceTestSuite struct {
+	suite.Suite
+	mockDB        *MockDBContext
+	service       *services.TransactionService
+	mockTx        *MockTx
+	mockQueryRow  *MockRow
+	mockClient    *MockClient
+	mockValidator *MockValidator
 }
 
-func (r *MockRow) Scan(dest ...interface{}) error {
-	args := r.Called(dest)
-	if r.err != nil {
-		return r.err
-	}
-	for i, d := range dest {
-		*(d.(*interface{})) = args.Get(i)
-	}
-	return nil
+// sets up the test suite
+func (suite *TransactionServiceTestSuite) SetupTest() {
+	suite.mockDB = new(MockDBContext)
+	suite.mockTx = new(MockTx)
+	suite.mockClient = new(MockClient)
+	suite.mockValidator = new(MockValidator)
+	suite.service = services.NewTransactionService(suite.mockDB, suite.mockClient, suite.mockValidator)
+
+	// Mock Begin method
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil)
+	suite.mockTx.On("Rollback").Return(nil)
 }
 
-func TestDeposit(t *testing.T) {
-	// Initialize the mock DB context
-	mockDB := database.MockDBContext{}
-
-	// Initialize the TransactionService with the mock DB context
-	transactionService := &services.TransactionService{DBContext: &mockDB}
-
-	tx := new(sql.Tx)
-	mockDB.On("Begin").Return(tx, nil)
-
+func (suite *TransactionServiceTestSuite) TestDeposit() {
 	request := dtos.DepositRequestDto{
 		AccountNumber:        "1234567890",
 		Amount:               100.0,
 		TransactionReference: "trx123",
 	}
+	var checksum = ""
 
 	account := dtos.AccountDto{
-		ID:             uuid.New(),
-		UserId:         uuid.New(),
+		ID:             uuid.New().String(),
+		UserId:         uuid.New().String(),
 		AccountNumber:  request.AccountNumber,
 		AccountBalance: 500.0,
-		CheckSum:       "some-checksum",
+		CheckSum:       &checksum,
 		IsActive:       true,
 	}
 
-	mockRow := new(MockRow)
-	mockRow.On("Scan", mock.Anything).Return(func(dest ...interface{}) error {
-		dest[0] = account.ID
-		dest[1] = account.UserId
-		dest[2] = account.AccountNumber
-		dest[3] = account.AccountBalance
-		dest[4] = account.CheckSum
-		dest[5] = account.IsActive
-		return nil
-	})
+	checkSum, _ := suite.mockValidator.ComputeChecksum(account)
 
-	// Test case: successful deposit
-	mockDB.On("Begin").Return(nil).Once()                                                                                                                                            // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow, nil).Once()                                                                                                  // Mocking a successful account retrieval
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()                // Mocking a successful account update
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once() // Mocking a successful transaction entry insert
-	mockDB.On("Commit").Return(nil).Once()                                                                                                                                           // Mocking a successful transaction commit
+	account.CheckSum = &checkSum
+
+	mockRow := new(MockRow)
+	mockRow.On("Scan", mock.AnythingOfType("*uuid.UUID"), mock.AnythingOfType("*uuid.UUID"),
+		mock.AnythingOfType("*string"), mock.AnythingOfType("*float32"), mock.AnythingOfType("*string"), mock.AnythingOfType("*bool")).
+		Run(func(args mock.Arguments) {
+			*(args[0].(*string)) = account.ID
+			*(args[1].(*string)) = account.UserId
+			*(args[2].(*string)) = account.AccountNumber
+			*(args[3].(*float32)) = account.AccountBalance
+			*(args[4].(*string)) = *account.CheckSum
+			*(args[5].(*bool)) = account.IsActive
+		}).Return(nil)
+
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow).Once()
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+	suite.mockDB.On("Commit").Return(nil).Once()
 
 	// Construct a valid deposit request
 	validRequest := dtos.DepositRequestDto{
@@ -79,69 +81,71 @@ func TestDeposit(t *testing.T) {
 	}
 
 	// Call the method being tested
-	successfulDeposit, err := transactionService.Deposit(validRequest)
+	successfulDeposit, err := suite.service.Deposit(validRequest)
 
 	// Assert expectations
-	assert.NoError(t, err)
-	assert.True(t, successfulDeposit)
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), successfulDeposit)
 
 	// Test case: validation error
 	invalidRequest := dtos.DepositRequestDto{} // Empty request causing validation error
-	_, validationErr := transactionService.Deposit(invalidRequest)
-	assert.Error(t, validationErr)
+	_, validationErr := suite.service.Deposit(invalidRequest)
+	assert.Error(suite.T(), validationErr)
 
 	// Test case: failure to begin transaction
-	mockDB.On("Begin").Return(fmt.Errorf("failed to begin transaction")).Once() // Mocking a failed transaction begin
-	_, beginErr := transactionService.Deposit(validRequest)
-	assert.Error(t, beginErr)
+	suite.mockDB.On("Begin").Return(nil, fmt.Errorf("failed to begin transaction")).Once() // Mocking a failed transaction begin
+	_, beginErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), beginErr)
 
 	// Test case: duplicate transaction reference
-	mockDB.On("Begin").Return(nil).Once()                                                           // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow, nil).Once()                 // Mocking a successful account retrieval
-	mockDB.On("IsTransactionReferenceExist", mock.Anything, mock.Anything).Return(true, nil).Once() // Mocking a duplicate transaction reference
-	_, duplicateRefErr := transactionService.Deposit(validRequest)
-	assert.Error(t, duplicateRefErr)
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil).Once()                        // Mocking a successful transaction begin
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow).Once() // Mocking a successful account retrieval
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything).Return(nil, nil).Once()    // Mocking transaction reference check
+	_, duplicateRefErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), duplicateRefErr)
 
 	// Test case: account not found
-	mockDB.On("Begin").Return(nil).Once()                                                 // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(nil, sql.ErrNoRows).Once() // Mocking account not found
-	_, accountNotFoundErr := transactionService.Deposit(validRequest)
-	assert.Error(t, accountNotFoundErr)
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil).Once()                                   // Mocking a successful transaction begin
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(nil, sql.ErrNoRows).Once() // Mocking account not found
+	_, accountNotFoundErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), accountNotFoundErr)
 
 	// Test case: checksum validation failure
-	mockDB.On("Begin").Return(nil).Once()                                           // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow, nil).Once() // Mocking a successful account retrieval
-	mockDB.On("ValidateChecksum", mock.Anything).Return(false, nil).Once()          // Mocking a checksum validation failure
-	_, checksumErr := transactionService.Deposit(validRequest)
-	assert.Error(t, checksumErr)
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil).Once()                        // Mocking a successful transaction begin
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow).Once() // Mocking a successful account retrieval
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything).Return(nil, nil).Once()    // Mocking checksum validation failure
+	_, checksumErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), checksumErr)
 
 	// Test case: failure to update account
-	mockDB.On("Begin").Return(nil).Once()                                                                                                                                                                // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow, nil).Once()                                                                                                                      // Mocking a successful account retrieval
-	mockDB.On("ValidateChecksum", mock.Anything).Return(true, nil).Once()                                                                                                                                // Mocking a successful checksum validation
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("failed to update account")).Once() // Mocking a failure to update account
-	_, updateErr := transactionService.Deposit(validRequest)
-	assert.Error(t, updateErr)
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil).Once()                                                                                      // Mocking a successful transaction begin
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow).Once()                                                               // Mocking a successful account retrieval
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("failed to update account")).Once() // Mocking a failure to update account
+	_, updateErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), updateErr)
 
 	// Test case: failure to insert transaction entry
-	mockDB.On("Begin").Return(nil).Once()                                                                                                                                                                                         // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow, nil).Once()                                                                                                                                               // Mocking a successful account retrieval
-	mockDB.On("ValidateChecksum", mock.Anything).Return(true, nil).Once()                                                                                                                                                         // Mocking a successful checksum validation
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()                                                             // Mocking a successful account update
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("failed to insert transaction entry")).Once() // Mocking a failure to insert transaction entry
-	_, insertErr := transactionService.Deposit(validRequest)
-	assert.Error(t, insertErr)
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil).Once()                                                                                                // Mocking a successful transaction begin
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow).Once()                                                                         // Mocking a successful account retrieval
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything).Return(nil, nil).Once()                                                                            // Mocking a successful account update
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("failed to insert transaction entry")).Once() // Mocking a failure to insert transaction entry
+	_, insertErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), insertErr)
 
 	// Test case: failure to commit transaction
-	mockDB.On("Begin").Return(nil).Once()                                                                                                                                            // Mocking a successful transaction begin
-	mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow, nil).Once()                                                                                                  // Mocking a successful account retrieval
-	mockDB.On("ValidateChecksum", mock.Anything).Return(true, nil).Once()                                                                                                            // Mocking a successful checksum validation
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()                // Mocking a successful account update
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once() // Mocking a successful transaction entry insert
-	mockDB.On("Commit").Return(fmt.Errorf("failed to commit transaction")).Once()                                                                                                    // Mocking a failure to commit transaction
-	_, commitErr := transactionService.Deposit(validRequest)
-	assert.Error(t, commitErr)
+	suite.mockDB.On("Begin").Return(suite.mockTx, nil).Once()                           // Mocking a successful transaction begin
+	suite.mockDB.On("QueryRow", mock.Anything, mock.Anything).Return(mockRow).Once()    // Mocking a successful account retrieval
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything).Return(nil, nil).Once()       // Mocking a successful account update
+	suite.mockDB.On("Exec", mock.Anything, mock.Anything).Return(nil, nil).Once()       // Mocking a successful transaction entry insert
+	suite.mockDB.On("Commit").Return(fmt.Errorf("failed to commit transaction")).Once() // Mocking a failure to commit transaction
+	_, commitErr := suite.service.Deposit(validRequest)
+	assert.Error(suite.T(), commitErr)
 
 	// Assert that all expectations were met
-	mockDB.AssertExpectations(t)
+	suite.mockDB.AssertExpectations(suite.T())
+}
+
+// Entry point for the test suite
+func TestTransactionServiceTestSuite(t *testing.T) {
+	suite.Run(t, new(TransactionServiceTestSuite))
 }

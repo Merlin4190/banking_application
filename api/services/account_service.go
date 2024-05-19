@@ -8,10 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"time"
 )
 
-type IAccountService interface {
-	OpenNewAccount(account dtos.NewAccountDto) (bool, error)
+type Account interface {
+	OpenNewAccount(account dtos.OpenAccountDto) (bool, error)
 	GetAccounts() ([]dtos.AccountVM, error)
 	GetAccount(accountNumber string) (dtos.AccountVM, error)
 	DeactivateAccount(accountNumber string) (bool, error)
@@ -19,13 +20,14 @@ type IAccountService interface {
 
 type AccountService struct {
 	dbContext database.DBContext
+	validator Validator
 }
 
-func NewAccountService(dbContext database.DBContext) *AccountService {
-	return &AccountService{dbContext: dbContext}
+func NewAccountService(dbContext database.DBContext, validator Validator) *AccountService {
+	return &AccountService{dbContext: dbContext, validator: validator}
 }
 
-func (s *AccountService) OpenNewAccount(request dtos.NewAccountDto) (bool, error) {
+func (s *AccountService) OpenNewAccount(request dtos.OpenAccountDto) (bool, error) {
 	validationErr := validate.Struct(request)
 
 	if validationErr != nil {
@@ -33,17 +35,45 @@ func (s *AccountService) OpenNewAccount(request dtos.NewAccountDto) (bool, error
 	}
 
 	//Generate New Account Number For User
-	accountNumber, err := s.GenerateAccountNumber(10, 0)
+	accountNumber, err := s.GenerateAccountNumber(9, 0)
 	if err != nil {
 		return false, err
 	}
 
-	_, insertErr := s.dbContext.Insert(`INSERT INTO accounts (user_id, account_number, account_balance, is_active) 
-	VALUES ($1, $2, $3, $4)`, request.UserId, accountNumber, request.DepositedAmount, request.IsActive)
+	_, insertErr := s.dbContext.Insert(`INSERT INTO accounts (user_id, account_number, account_balance, is_active, created_at) 
+	VALUES ($1, $2, $3, $4, $5)`, request.UserId, accountNumber, request.DepositedAmount, request.IsActive, time.Now())
 
 	if insertErr != nil {
+		return false, insertErr
+	}
+
+	var account dtos.AccountDto
+
+	if err := s.dbContext.QueryRow(`SELECT id, user_id, account_number, account_balance, checksum, is_active FROM accounts 
+                            				WHERE account_number = $1 FOR UPDATE`, accountNumber).Scan(&account.ID, &account.UserId,
+		&account.AccountNumber, &account.AccountBalance, &account.CheckSum, &account.IsActive); err != nil {
+		// Check if no rows were returned
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("account not found for accountnumber %s", accountNumber)
+		}
 		return false, err
 	}
+
+	//Generate Checksum
+	checksum, checksumErr := s.validator.ComputeChecksum(account)
+	if checksumErr != nil {
+		return false, checksumErr
+	}
+
+	account.CheckSum = &checksum
+
+	//Update Account
+	_, updateErr := s.dbContext.Update(`UPDATE accounts SET checksum = $1 WHERE account_number = $2`,
+		account.CheckSum, accountNumber)
+	if updateErr != nil {
+		return false, fmt.Errorf("account update failed: %v", updateErr)
+	}
+
 	return true, nil
 }
 

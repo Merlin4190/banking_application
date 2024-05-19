@@ -3,6 +3,7 @@ package routes
 import (
 	"banking_application/api/controllers"
 	"banking_application/api/database"
+	"banking_application/api/http"
 	"banking_application/api/services"
 	"database/sql"
 
@@ -11,7 +12,9 @@ import (
 
 func TransactionRoutes(incomingRoutes *gin.Engine, sqlDb *sql.DB) {
 	db := database.NewDBContext(sqlDb)
-	transactionService := services.NewTransactionService(db)
+	client := http.NewClient()
+	validator := services.NewTransactionValidator(db)
+	transactionService := services.NewTransactionService(db, client, validator)
 	transactionController := controllers.NewTransactionController(transactionService)
 
 	//incomingRoutes.GET("/transactions", transactionController.GetTransactions())

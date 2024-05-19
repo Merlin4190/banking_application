@@ -4,12 +4,9 @@ import (
 	"banking_application/api/domain/dtos"
 	"banking_application/api/services"
 	"banking_application/api/util"
-	"context"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"net/http"
-	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 type UserController struct {
@@ -24,9 +21,6 @@ func NewUserController(service services.UserService) UserController {
 
 func (s *UserController) CreateUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
-
 		user := dtos.UserDto{}
 
 		if err := c.BindJSON(&user); err != nil {

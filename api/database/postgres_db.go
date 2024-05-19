@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 
@@ -15,11 +15,19 @@ import (
 
 func ConnectDB() *sql.DB {
 
-	host := os.Getenv("DB_HOST")
+	/*host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	user := os.Getenv("DB_USER")
 	password := os.Getenv("DB_PASSWORD")
-	dbname := os.Getenv("DB_NAME")
+	dbname := os.Getenv("DB_NAME")*/
+
+	const (
+		host     = "localhost"
+		port     = 5432
+		user     = "postgres"
+		password = "@Merlino07"
+		dbname   = "banking_application_db"
+	)
 
 	// Construct connection string
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
@@ -50,7 +58,7 @@ func Migration(ctx *AppDBContext, filename string) error {
 
 	// Split SQL commands by semicolon
 	commands := strings.Split(string(sqlCommands), ";")
-	log.Println("got here, ", err)
+
 	// Execute SQL commands
 	for _, command := range commands {
 		command = strings.TrimSpace(command)
@@ -95,20 +103,20 @@ func SeedData(ctx *AppDBContext) error {
 	}
 
 	if _, err := ctx.Insert(`INSERT INTO users (id, firstname, lastname, email, password, created_at) 
-		VALUES ('4a604e74-ef0f-4f46-9b15-6bb24e3f2a06', 'Ayodeji', 'Bolanle', 'ayodeji_bolanle@yahoo.com', $1, time.Now())`, hashedPassword); err != nil {
+		VALUES ('4a604e74-ef0f-4f46-9b15-6bb24e3f2a06', 'Ayodeji', 'Bolanle', 'ayodeji_bolanle@yahoo.com', $1, $2)`, hashedPassword, time.Now()); err != nil {
 		return fmt.Errorf("error seeding data into users table: %v", err)
 	}
 
 	// Seed initial data into accounts table
 	if _, err := ctx.Insert(`INSERT INTO accounts (id, user_id, account_number, account_balance, is_active, created_at) 
-		VALUES ('6c70ab16-4959-4286-b7a6-f1b219be091b', '4a604e74-ef0f-4f46-9b15-6bb24e3f2a06', '1234567890', 100.00, true, time.Now())`); err != nil {
+		VALUES ('6c70ab16-4959-4286-b7a6-f1b219be091b', '4a604e74-ef0f-4f46-9b15-6bb24e3f2a06', '1234567890', 100.00, true, $1)`, time.Now()); err != nil {
 		return fmt.Errorf("error seeding data into accounts table: %v", err)
 	}
 
 	// Seed initial data into transactions table
 	if _, err := ctx.Insert(`INSERT INTO transactions (account_id, transaction_reference, transaction_type, transaction_record_type, 
                           transaction_amount, transaction_status, created_at) VALUES ('6c70ab16-4959-4286-b7a6-f1b219be091b', '123456789123456', 
-                                                                                      'deposit', 'credit', 50.00, 'success', time.Now())`); err != nil {
+                                                                                      'deposit', 'credit', 50.00, 'success', $1)`, time.Now()); err != nil {
 		return fmt.Errorf("error seeding data into transactions table: %v", err)
 	}
 

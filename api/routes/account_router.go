@@ -11,7 +11,8 @@ import (
 
 func AccountRoutes(incomingRoutes *gin.Engine, sqlDb *sql.DB) {
 	db := database.NewDBContext(sqlDb)
-	accountService := services.NewAccountService(db)
+	validator := services.NewTransactionValidator(db)
+	accountService := services.NewAccountService(db, validator)
 	accountController := controllers.NewAccountController(accountService)
 
 	incomingRoutes.GET("/accounts", accountController.GetAccounts())

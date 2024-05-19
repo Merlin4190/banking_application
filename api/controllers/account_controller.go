@@ -4,17 +4,15 @@ import (
 	"banking_application/api/domain/dtos"
 	"banking_application/api/services"
 	"banking_application/api/util"
-	"context"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"time"
 )
 
 type AccountController struct {
-	accountService services.IAccountService
+	accountService services.Account
 }
 
-func NewAccountController(service services.IAccountService) *AccountController {
+func NewAccountController(service services.Account) *AccountController {
 	return &AccountController{
 		accountService: service,
 	}
@@ -22,10 +20,7 @@ func NewAccountController(service services.IAccountService) *AccountController {
 
 func (s *AccountController) CreateAccount() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
-
-		var account dtos.NewAccountDto
+		var account dtos.OpenAccountDto
 
 		if err := c.BindJSON(&account); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
@@ -37,9 +32,10 @@ func (s *AccountController) CreateAccount() gin.HandlerFunc {
 		if serviceErr != nil {
 			errResponse := util.HandleErrors(serviceErr)
 			c.JSON(errResponse.StatusCode, gin.H{"error": errResponse.Message, "success": errResponse.Success})
+			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "User created successfully", "success": true})
+		c.JSON(http.StatusOK, gin.H{"message": "Account created successfully", "success": true})
 
 	}
 }

@@ -11,10 +11,10 @@ import (
 )
 
 type TransactionController struct {
-	transactionService services.ITransactionService
+	transactionService services.Transaction
 }
 
-func NewTransactionController(service services.ITransactionService) *TransactionController {
+func NewTransactionController(service services.Transaction) *TransactionController {
 	return &TransactionController{transactionService: service}
 }
 
@@ -35,6 +35,7 @@ func (s *TransactionController) Deposit() gin.HandlerFunc {
 		if serviceErr != nil {
 			errResponse := util.HandleErrors(serviceErr)
 			c.JSON(errResponse.StatusCode, gin.H{"error": errResponse.Message, "success": errResponse.Success})
+			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "deposit transaction successful", "success": true})
@@ -58,6 +59,7 @@ func (s *TransactionController) Withdraw() gin.HandlerFunc {
 		if serviceErr != nil {
 			errResponse := util.HandleErrors(serviceErr)
 			c.JSON(errResponse.StatusCode, gin.H{"error": errResponse.Message, "success": errResponse.Success})
+			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "withdrawal transaction successful", "success": true})

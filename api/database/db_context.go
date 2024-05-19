@@ -4,6 +4,8 @@ import "database/sql"
 
 type DBContext interface {
 	Begin() (*sql.Tx, error)
+	Commit() error
+	Rollback() error
 	Insert(query string, args ...interface{}) (sql.Result, error)
 	Update(query string, args ...interface{}) (sql.Result, error)
 	Query(query string, args ...interface{}) (*sql.Rows, error)
@@ -16,6 +18,18 @@ type AppDBContext struct {
 
 func NewDBContext(db *sql.DB) *AppDBContext {
 	return &AppDBContext{DB: db}
+}
+
+// Commit Implementing Commit method
+func (ctx *AppDBContext) Commit() error {
+	// Implementation
+	return ctx.Commit()
+}
+
+// Rollback Implementing Rollback method
+func (ctx *AppDBContext) Rollback() error {
+	// Implementation
+	return ctx.Rollback()
 }
 
 func (ctx *AppDBContext) Begin() (*sql.Tx, error) {

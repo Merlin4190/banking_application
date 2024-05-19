@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     transaction_record_type VARCHAR(7) NOT NULL,
     transaction_amount DECIMAL(18, 4),
     transaction_status VARCHAR(10) NOT NULL,
+    third_party_reference VARCHAR(15) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

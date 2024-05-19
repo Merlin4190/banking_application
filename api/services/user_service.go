@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"time"
 )
 
 type IUserService interface {
@@ -42,8 +43,8 @@ func (s *UserService) CreateUser(newUser dtos.UserDto) (bool, error) {
 	}
 
 	// Call the CreateUser method of the user database/repository
-	_, err = s.dbContext.Insert(`INSERT INTO users (firstname, lastname, email, password) 
-	VALUES ($1, $2, $3, $4)`, newUser.Firstname, newUser.Lastname, newUser.Email, hashedPassword)
+	_, err = s.dbContext.Insert(`INSERT INTO users (firstname, lastname, email, password, created_at) 
+	VALUES ($1, $2, $3, $4, $5)`, newUser.Firstname, newUser.Lastname, newUser.Email, hashedPassword, time.Now())
 	if err != nil {
 		return false, err
 	}

@@ -1,4 +1,4 @@
-package database
+package test
 
 import (
 	"database/sql"
@@ -10,9 +10,55 @@ type MockDBContext struct {
 	mock.Mock
 }
 
+type MockRow struct {
+	mock.Mock
+}
+
+func (r *MockRow) Scan(dest ...interface{}) error {
+	args := r.Called(dest)
+	for i, d := range dest {
+		if args.Get(i) != nil {
+			*(d.(*interface{})) = args.Get(i)
+		}
+	}
+	return args.Error(len(dest))
+}
+
+// MockTx is a mock implementation of sql.Tx
+type MockTx struct {
+	mock.Mock
+	sql.Tx
+}
+
+func (tx *MockTx) Commit() error {
+	args := tx.Called()
+	return args.Error(0)
+}
+
+func (tx *MockTx) Rollback() error {
+	args := tx.Called()
+	return args.Error(0)
+}
+
+type WrappedTx struct {
+	*MockTx
+	sql.Tx
+}
+
 func (m *MockDBContext) Begin() (*sql.Tx, error) {
 	args := m.Called()
-	return args.Get(0).(*sql.Tx), args.Error(1)
+	tx, _ := args.Get(0).(*sql.Tx)
+	return tx, args.Error(1)
+}
+
+func (m *MockDBContext) Commit() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func (m *MockDBContext) Rollback() error {
+	args := m.Called()
+	return args.Error(0)
 }
 
 // Insert mocks the Insert method of DBContext interface

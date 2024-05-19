@@ -1,21 +1,31 @@
 package test
 
 import (
-	"banking_application/api/database"
 	"banking_application/api/services"
 	"database/sql"
 	"errors"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 	"testing"
 )
 
+type AccountServiceTestSuite struct {
+	suite.Suite
+	mockDB        *MockDBContext
+	service       *services.TransactionService
+	mockTx        *MockTx
+	mockQueryRow  *MockRow
+	mockValidator *MockValidator
+}
+
 // TestGenerateAccountNumber tests the GenerateAccountNumber method
-func TestGenerateAccountNumber(t *testing.T) {
+func (suite *AccountServiceTestSuite) TestGenerateAccountNumber(t *testing.T) {
 	accountNumber := "5213434566756"
 	// Mock the DBContext
-	mockDB := database.MockDBContext{}
+	mockDB := MockDBContext{}
+	suite.mockValidator = new(MockValidator)
 
-	accountService := services.NewAccountService(&mockDB)
+	accountService := services.NewAccountService(&mockDB, suite.mockValidator)
 
 	// Test case: valid account number generation
 	length := 10
