@@ -21,6 +21,10 @@ func (v *MockValidator) ValidateChecksum(account dtos.AccountDto) (bool, error) 
 
 func (v *MockValidator) ComputeChecksum(account dtos.AccountDto) (string, error) {
 	args := v.Called(account)
-	response := args.String(0)
-	return response, args.Error(1)
+	return args.String(0), args.Error(1)
+}
+
+func (v *MockValidator) NotANegativeNumber(number float32) bool {
+	args := v.Called(number)
+	return args.Bool(0)
 }

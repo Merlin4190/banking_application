@@ -4,10 +4,8 @@ import (
 	"banking_application/api/domain/dtos"
 	"banking_application/api/services"
 	"banking_application/api/util"
-	"context"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"time"
 )
 
 type TransactionController struct {
@@ -20,9 +18,6 @@ func NewTransactionController(service services.Transaction) *TransactionControll
 
 func (s *TransactionController) Deposit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
-
 		account := dtos.DepositRequestDto{}
 
 		if err := c.BindJSON(&account); err != nil {
@@ -44,9 +39,6 @@ func (s *TransactionController) Deposit() gin.HandlerFunc {
 
 func (s *TransactionController) Withdraw() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
-
 		account := dtos.WithdrawRequestDto{}
 
 		if err := c.BindJSON(&account); err != nil {

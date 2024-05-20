@@ -5,7 +5,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockClient is a mock implementation of the external client
 type MockClient struct {
 	mock.Mock
 }

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,7 @@ type Validator interface {
 	IsTransactionReferenceExist(transactionReference string) (bool, error)
 	ValidateChecksum(account dtos.AccountDto) (bool, error)
 	ComputeChecksum(account dtos.AccountDto) (string, error)
+	NotANegativeNumber(number float32) bool
 }
 
 type TransactionValidator struct {
@@ -36,6 +38,10 @@ func (v *TransactionValidator) ValidateChecksum(account dtos.AccountDto) (bool, 
 
 func (v *TransactionValidator) ComputeChecksum(account dtos.AccountDto) (string, error) {
 	return computeChecksum(account)
+}
+
+func (v *TransactionValidator) NotANegativeNumber(number float32) bool {
+	return number >= 0
 }
 
 func isTransactionReferenceExist(ctx database.DBContext, transactionRef string) (bool, error) {
@@ -74,6 +80,8 @@ func validateChecksum(account dtos.AccountDto) (bool, error) {
 		return false, err
 	}
 
+	log.Println(decryptedValue)
+
 	// Split the decrypted value into parts
 	values := strings.Split(decryptedValue, "|")
 	if len(values) == 5 {
@@ -82,15 +90,22 @@ func validateChecksum(account dtos.AccountDto) (bool, error) {
 		accountNumber := values[1]
 		balance, _ := strconv.ParseFloat(values[2], 32)
 		status := values[3]
-		//accountID := values[4]
+		accountID := values[4]
 
 		accountBalance := float32(balance)
 		/*userId, _ := uuid.Parse(accountHolderID)
 		accountUUID, _ := uuid.Parse(accountID)*/
 
+		log.Println(account.ID)
+		log.Println(accountID)
+
+		log.Println(account.ID == accountID)
+
+		log.Println(strings.Compare(account.ID, accountID) == 0)
+
 		// Validate against wallet attributes
-		if /*account.ID == accountID &&*/
-		account.UserId == accountHolderID &&
+		if strings.Compare(account.ID, accountID) == 0 &&
+			account.UserId == accountHolderID &&
 			accountNumber == account.AccountNumber &&
 			accountBalance == account.AccountBalance &&
 			status == strconv.FormatBool(account.IsActive) {

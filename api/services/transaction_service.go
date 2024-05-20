@@ -34,13 +34,20 @@ func (s *TransactionService) Deposit(request dtos.DepositRequestDto) (bool, erro
 		return false, fmt.Errorf("validation %v", validationErr)
 	}
 
+	// Validate against negative amount
+	isNotNegative := s.Validator.NotANegativeNumber(request.Amount)
+
+	if !isNotNegative {
+		return false, fmt.Errorf("validation: %v", "amount cannot be less than or equal zero")
+	}
+
 	//Check for duplicate transaction
 	isExist, refErr := s.Validator.IsTransactionReferenceExist(request.TransactionReference)
 	if refErr != nil {
 		return false, fmt.Errorf("transaction reference validation failed: %v", refErr)
 	}
 	if isExist {
-		return false, fmt.Errorf("duplicate transaction")
+		return false, fmt.Errorf("validation: %v", "duplicate transaction")
 	}
 
 	var account dtos.AccountDto
@@ -74,6 +81,7 @@ func (s *TransactionService) Deposit(request dtos.DepositRequestDto) (bool, erro
 
 	account.AccountBalance += request.Amount
 	account.UpdatedAt = time.Now()
+
 	//Compute Checksum
 	checksum, _ := s.Validator.ComputeChecksum(account)
 
@@ -121,13 +129,20 @@ func (s *TransactionService) Withdraw(request dtos.WithdrawRequestDto) (bool, er
 		return false, fmt.Errorf("validation error: %v", validationErr)
 	}
 
+	// Validate against negative amount
+	isNotNegative := s.Validator.NotANegativeNumber(request.Amount)
+
+	if !isNotNegative {
+		return false, fmt.Errorf("validation: %v", "amount cannot be less than or equal zero")
+	}
+
 	//Check for duplicate transaction
 	isExist, refErr := s.Validator.IsTransactionReferenceExist(request.TransactionReference)
 	if refErr != nil {
 		return false, fmt.Errorf("transaction reference validation failed: %v", refErr)
 	}
 	if isExist {
-		return false, fmt.Errorf("duplicate transaction")
+		return false, fmt.Errorf("validation: %v", "duplicate transaction")
 	}
 
 	var account dtos.AccountDto
@@ -201,9 +216,9 @@ func (s *TransactionService) Withdraw(request dtos.WithdrawRequestDto) (bool, er
 	// Create Transaction entry
 	_, insertErr := tx.Exec(`
 		INSERT INTO transactions (account_id, transaction_reference, transaction_type, transaction_record_type, 
-			transaction_amount, transaction_status, created_at) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		account.ID, response.Reference, "withdrawal", "debit", response.Amount, "successful", time.Now())
+			transaction_amount, transaction_status, created_at, third_party_reference) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, &8)`,
+		account.ID, request.TransactionReference, "withdrawal", "debit", request.Amount, "successful", time.Now(), response.Reference)
 	if insertErr != nil {
 		return false, fmt.Errorf("insert transaction entry failed: %v", insertErr)
 	}

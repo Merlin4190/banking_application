@@ -3,8 +3,10 @@ package util
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	crypt "crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -55,25 +57,31 @@ func CheckPasswordHash(password, hash string) bool {
 }
 
 // Handle Errors
+
 func HandleErrors(errorType error) *ErrorResponse {
-	if strings.Contains("validation", errorType.Error()) {
+	errorMessage := errorType.Error()
+	if strings.Contains(errorMessage, "validation") {
 		errResp := ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Message:    errorType.Error(),
+			Message:    strings.TrimPrefix(errorMessage, "validation: "),
 			Success:    false,
 		}
-
+		return &errResp
+	} else if strings.Contains(errorMessage, "not found") {
+		errResp := ErrorResponse{
+			StatusCode: http.StatusNotFound,
+			Message:    errorMessage,
+			Success:    false,
+		}
 		return &errResp
 	} else {
 		errResp := ErrorResponse{
 			StatusCode: http.StatusInternalServerError,
-			Message:    errorType.Error(),
+			Message:    errorMessage,
 			Success:    false,
 		}
 		return &errResp
 	}
-
-	return nil
 }
 
 func PowerOf10(n int) int {
@@ -97,19 +105,22 @@ func AESEncrypt(data, key string) (string, error) {
 		return "", fmt.Errorf("error creating AES cipher block: %v", err)
 	}
 
-	// Pad the data to a multiple of the block size
-	blockSize := block.BlockSize()
-	paddedData := make([]byte, len(data)+blockSize-len(data)%blockSize)
-	copy(paddedData, []byte(data))
-
-	// Encrypt the padded data
-	encryptedData := make([]byte, len(paddedData))
+	// Generate a new IV
 	iv := make([]byte, aes.BlockSize)
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(encryptedData, paddedData)
+	if _, err := io.ReadFull(crypt.Reader, iv); err != nil {
+		return "", fmt.Errorf("error generating IV: %v", err)
+	}
 
-	// Encode the encrypted data to base64
-	encodedData := base64.StdEncoding.EncodeToString(encryptedData)
+	// Encrypt the data
+	encryptedData := make([]byte, len(data))
+	stream := cipher.NewCTR(block, iv)
+	stream.XORKeyStream(encryptedData, []byte(data))
+
+	// Prepend the IV to the encrypted data
+	encryptedDataWithIV := append(iv, encryptedData...)
+
+	// Encode the encrypted data with IV to base64
+	encodedData := base64.StdEncoding.EncodeToString(encryptedDataWithIV)
 
 	return encodedData, nil
 }
@@ -122,10 +133,17 @@ func AESDecrypt(encodedData, key string) (string, error) {
 	}
 
 	// Decode the base64 encoded data
-	encryptedData, err := base64.StdEncoding.DecodeString(encodedData)
+	encryptedDataWithIV, err := base64.StdEncoding.DecodeString(encodedData)
 	if err != nil {
 		return "", fmt.Errorf("error decoding base64 encoded data: %v", err)
 	}
+
+	// Extract the IV from the encrypted data
+	if len(encryptedDataWithIV) < aes.BlockSize {
+		return "", fmt.Errorf("encrypted data too short")
+	}
+	iv := encryptedDataWithIV[:aes.BlockSize]
+	encryptedData := encryptedDataWithIV[aes.BlockSize:]
 
 	// Create a new AES block cipher using the key
 	block, err := aes.NewCipher(keyBytes)
@@ -133,18 +151,10 @@ func AESDecrypt(encodedData, key string) (string, error) {
 		return "", fmt.Errorf("error creating AES cipher block: %v", err)
 	}
 
-	// Decrypt the encrypted data
+	// Decrypt the data
 	decryptedData := make([]byte, len(encryptedData))
-	iv := make([]byte, aes.BlockSize)
 	stream := cipher.NewCTR(block, iv)
 	stream.XORKeyStream(decryptedData, encryptedData)
 
-	// Remove any padding from the decrypted data
-	unpaddedData := decryptedData
-	if len(unpaddedData) > 0 {
-		padding := unpaddedData[len(unpaddedData)-1]
-		unpaddedData = unpaddedData[:len(unpaddedData)-int(padding)]
-	}
-
-	return string(unpaddedData), nil
+	return string(decryptedData), nil
 }
